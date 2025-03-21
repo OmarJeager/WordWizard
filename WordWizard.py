@@ -2,6 +2,10 @@ from collections import Counter
 import re
 import tkinter as tk
 from tkinter import scrolledtext, filedialog, messagebox
+from langdetect import detect
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Function to count letters and words
 def count_letters_and_words(text):
@@ -14,8 +18,8 @@ def count_letters_and_words(text):
     
     return letter_counts, word_counts
 
-# Function to display statistics
-def display_counts():
+# Function to update statistics in real-time
+def update_stats(event=None):
     text = text_input.get("1.0", tk.END).strip()
     letter_output.delete("1.0", tk.END)
     word_output.delete("1.0", tk.END)
@@ -94,17 +98,65 @@ def save_results():
             file.write(results)
         messagebox.showinfo("Success", "Results saved successfully!")
 
-# Function to search for a word
+# Function to search for a word and highlight it
 def search_word():
     text = text_input.get("1.0", tk.END).strip()
     search_term = search_entry.get().strip().lower()
     
     if text and search_term:
+        # Remove previous highlights
+        text_input.tag_remove("highlight", "1.0", tk.END)
+        
+        # Count occurrences
         words = re.findall(r'\b\w+\b', text.lower())
         word_count = words.count(search_term)
+        
+        # Highlight all occurrences
+        start = "1.0"
+        while True:
+            start = text_input.search(search_term, start, stopindex=tk.END, nocase=True)
+            if not start:
+                break
+            end = f"{start}+{len(search_term)}c"
+            text_input.tag_add("highlight", start, end)
+            start = end
+        
+        text_input.tag_config("highlight", background="yellow", foreground="black")
         messagebox.showinfo("Search Result", f"The word '{search_term}' appears {word_count} time(s).")
     else:
         messagebox.showwarning("Invalid Input", "Please enter some text and a search term.")
+
+# Function to detect language
+def detect_language():
+    text = text_input.get("1.0", tk.END).strip()
+    if text:
+        try:
+            language = detect(text)
+            messagebox.showinfo("Language Detection", f"The detected language is: {language}")
+        except:
+            messagebox.showwarning("Error", "Language detection failed. Please try again.")
+    else:
+        messagebox.showwarning("Invalid Input", "Please enter some text to detect the language.")
+
+# Function to summarize text
+def summarize_text():
+    text = text_input.get("1.0", tk.END).strip()
+    if text:
+        sentences = re.split(r'[.!?]', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        # Use TF-IDF to rank sentences
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform(sentences)
+        sentence_scores = np.array(tfidf_matrix.sum(axis=1)).flatten()
+        
+        # Get top 3 sentences
+        top_sentence_indices = sentence_scores.argsort()[-3:][::-1]
+        summary = "\n".join([sentences[i] for i in top_sentence_indices])
+        
+        messagebox.showinfo("Text Summary", f"Summary:\n\n{summary}")
+    else:
+        messagebox.showwarning("Invalid Input", "Please enter some text to summarize.")
 
 # Create the main window
 root = tk.Tk()
@@ -118,6 +170,9 @@ instruction_label.pack(pady=5)
 text_input = scrolledtext.ScrolledText(root, width=80, height=15, wrap=tk.WORD)
 text_input.pack(pady=5)
 
+# Bind the text input to update stats in real-time
+text_input.bind("<KeyRelease>", update_stats)
+
 # Create a frame for buttons
 button_frame = tk.Frame(root)
 button_frame.pack(pady=5)
@@ -127,12 +182,24 @@ upload_button = tk.Button(button_frame, text="Upload File", command=upload_file)
 upload_button.pack(side=tk.LEFT, padx=5)
 
 # Add an "Analyze Text" button
-analyze_button = tk.Button(button_frame, text="Analyze Text", command=display_counts)
+analyze_button = tk.Button(button_frame, text="Analyze Text", command=update_stats)
 analyze_button.pack(side=tk.LEFT, padx=5)
 
 # Add a "Save Results" button
 save_button = tk.Button(button_frame, text="Save Results", command=save_results)
 save_button.pack(side=tk.LEFT, padx=5)
+
+# Add a "Search Word" button
+search_button = tk.Button(button_frame, text="Search Word", command=search_word)
+search_button.pack(side=tk.LEFT, padx=5)
+
+# Add a "Detect Language" button
+language_button = tk.Button(button_frame, text="Detect Language", command=detect_language)
+language_button.pack(side=tk.LEFT, padx=5)
+
+# Add a "Summarize Text" button
+summarize_button = tk.Button(button_frame, text="Summarize Text", command=summarize_text)
+summarize_button.pack(side=tk.LEFT, padx=5)
 
 # Create a frame for the search feature
 search_frame = tk.Frame(root)
@@ -141,10 +208,6 @@ search_frame.pack(pady=5)
 # Add a search entry box
 search_entry = tk.Entry(search_frame, width=30)
 search_entry.pack(side=tk.LEFT, padx=5)
-
-# Add a "Search Word" button
-search_button = tk.Button(search_frame, text="Search Word", command=search_word)
-search_button.pack(side=tk.LEFT, padx=5)
 
 # Create a scrolled text box for letter counts
 letter_output = scrolledtext.ScrolledText(root, width=80, height=15, wrap=tk.WORD)
